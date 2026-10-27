@@ -6,7 +6,7 @@ import {
   TOOL_ORDER, TOOL_KEY, TOOL_ZONE, BUILDINGS, ZONE_LEVELS, ZONE_ORDER, COVER, BLOCK, BLOCK_COLORS,
   SKINS, SKIN_ORDER, DEFAULT_SKIN, OVERLAY_ORDER, BALANCE, xyOf,
 } from './data.js';
-import { LANGS, t, getLang, applyDom, formatMoney, formatInt, monthName, formatDate } from './i18n.js';
+import { LANGS, t, getLang, isRTL, applyDom, formatMoney, formatInt, monthName, formatDate } from './i18n.js';
 
 const TOAST_MS = 3500;
 const TOAST_MAX = 3;
@@ -102,13 +102,6 @@ function toolCost(tool) {
   return BUILDINGS[tool] ? BUILDINGS[tool].cost : 0;
 }
 
-/** Monthly upkeep of everything currently built (roads + service buildings). */
-function currentUpkeep(city) {
-  let sum = num(city.stats && city.stats.roads) * BALANCE.ROAD_UPKEEP;
-  for (const b of city.buildings || []) sum += BUILDINGS[b.id] ? BUILDINGS[b.id].upkeep : 0;
-  return sum;
-}
-
 /** Translated names of the services covering a tile, from its cover bitmask. */
 function serviceNames(mask) {
   return Object.entries(COVER).filter(([, bit]) => mask & bit).map(([key]) => t(`tool.${key.toLowerCase()}`));
@@ -187,7 +180,8 @@ export function createUI(api) {
     blockerLegend: $('blocker-legend'),
     shareCode: $('share-code'), shareImport: $('share-import'), btnCopyCode: $('btn-copy-code'), btnCopyLink: $('btn-copy-link'),
     btnImport: $('btn-import'), btnSave: $('btn-save'), btnLoad: $('btn-load'), btnNewGame: $('btn-new-game'),
-    debt: $('debt-banner'), badge: $('price-badge'), toasts: $('toasts'), confirm: $('confirm'), confirmText: $('confirm-text'),
+    debt: $('debt-banner'), badge: $('price-badge'), toasts: $('toasts'), landingToasts: $('landing-toasts'),
+    confirm: $('confirm'), confirmText: $('confirm-text'),
   };
   /** @type {Map<string, HTMLButtonElement>} */
   const toolButtons = new Map();
@@ -195,6 +189,7 @@ export function createUI(api) {
   let last = { city: null, view: null };
   let landingMeta = null;
   let sparkKey = '';                 // "history length:cash" of the last drawn sparkline
+  let bannerH = '';                  // --banner-h last written to the stage (phone toasts stack below the banner)
 
   /** Returns keyboard focus to the map after a mouse-driven HUD action, so Space/Enter/arrows keep working. */
   const focusMap = () => el.canvas.focus({ preventScroll: true });
@@ -246,9 +241,16 @@ export function createUI(api) {
     const k = el.tabs.indexOf(document.activeElement);
     if (k < 0) return;
     e.preventDefault();
-    const next = el.tabs[(k + (e.key === 'ArrowRight' ? 1 : el.tabs.length - 1)) % el.tabs.length];
+    const forward = (e.key === 'ArrowRight') !== isRTL();   // arrows follow the visual order, which RTL reverses
+    const next = el.tabs[(k + (forward ? 1 : el.tabs.length - 1)) % el.tabs.length];
     ui.openPanel(next.dataset.panel);
     next.focus();
+  });
+  // Chromium does not reliably scroll a newly focused tab into view when the strip overflows (long
+  // es/ru labels at 320 px), which would leave the tab and its focus ring hidden; `.tablist`'s
+  // scroll-padding keeps room for the ring.
+  el.tabs[0].parentElement.addEventListener('focusin', (e) => {
+    if (el.tabs.includes(e.target)) e.target.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   });
   el.panelClose.addEventListener('click', () => ui.openPanel(null));
 
@@ -367,9 +369,15 @@ export function createUI(api) {
     const rate = clamp(num(city.taxRate), BALANCE.TAX_MIN, BALANCE.TAX_MAX);
     if (document.activeElement !== el.taxSlider && Number(el.taxSlider.value) !== rate) el.taxSlider.value = String(rate);
     setText(el.taxValue, t('budget.tax', { n: rate }));
-    const upkeep = currentUpkeep(city);
-    const interest = cash < 0 ? Math.round(BALANCE.INTEREST * -cash) : 0;
-    const income = num(s.income);
+    // Settled figures of the last month (stats.income/expenses, seeded from history after a load). The
+    // interest share is not stored; it was INTEREST × the debt before that settlement, and the last
+    // history entry holds the cash after it: before = after − income + expenses.
+    const income = num(s.income), expenses = num(s.expenses);
+    const history = Array.isArray(city.history) ? city.history : [];
+    const settled = history.length ? history[history.length - 1] : null;
+    const cashBefore = settled ? num(settled.cash) - income + expenses : 0;
+    const interest = cashBefore < 0 ? Math.min(expenses, Math.round(BALANCE.INTEREST * -cashBefore)) : 0;
+    const upkeep = expenses - interest;
     fillRows(el.budgetRows, [
       [t('budget.income'), formatMoney(income)],
       [t('budget.upkeep'), formatMoney(-upkeep)],
@@ -386,7 +394,7 @@ export function createUI(api) {
       }),
     ];
     if (cash < 0) lines.push({ text: t('budget.debt'), cls: 'warn' });
-    if (city.servicesCut) lines.push({ text: t('budget.cut'), cls: 'warn' });
+    if (city.servicesCut) lines.push({ text: t('budget.cut', { n: formatMoney(BALANCE.SERVICES_CUT_CASH) }), cls: 'warn' });
     fillList(el.budgetLines, lines);
     drawSpark(city);
   }
@@ -450,22 +458,27 @@ export function createUI(api) {
       if (OVERLAY_ORDER.includes(view.overlay) && el.overlay.value !== view.overlay) el.overlay.value = view.overlay;
       if (SKINS[city.skin] && el.skin.value !== city.skin) el.skin.value = city.skin;
       el.debt.hidden = cash >= 0;
-      if (cash < 0) setText(el.debt, t(city.servicesCut ? 'budget.cut' : 'budget.debt'));
+      if (cash < 0) setText(el.debt, city.servicesCut ? t('budget.cut', { n: formatMoney(BALANCE.SERVICES_CUT_CASH) }) : t('budget.debt'));
+      const h = cash < 0 ? `${el.debt.offsetHeight}px` : '0px';
+      if (h !== bannerH) { bannerH = h; el.stage.style.setProperty('--banner-h', h); }
       renderOpenPanel();
     },
 
     /**
-     * Shows a translated toast for 3.5 s (at most 3 stacked) in the aria-live region.
+     * Shows a translated toast for 3.5 s (at most 3 stacked) in an aria-live region: the stage's while
+     * playing, the landing's while the landing is shown (#app is inert then, so its region is silent).
      * @param {string} key  i18n key
      * @param {Record<string, unknown>} [params]
      * @param {'info'|'warn'|'error'} [kind]
      */
     toast(key, params = {}, kind = 'info') {
+      const host = el.landing.hidden ? el.toasts : el.landingToasts;
       const node = document.createElement('div');
       node.className = `toast toast-${kind === 'warn' || kind === 'error' ? kind : 'info'}`;
+      node.dir = 'auto';   // a toast keeps its text through a language switch, so it resolves its own direction
       node.textContent = t(key, params);
-      el.toasts.appendChild(node);
-      while (el.toasts.children.length > TOAST_MAX) el.toasts.firstElementChild.remove();
+      host.appendChild(node);
+      while (host.children.length > TOAST_MAX) host.firstElementChild.remove();
       setTimeout(() => node.remove(), TOAST_MS);
     },
 
@@ -510,7 +523,7 @@ export function createUI(api) {
     isPanelOpen(id) { return id === undefined ? openId !== null : openId === id; },
 
     /**
-     * Asks a yes/no question in the <dialog>; resolves true for "Yes". Esc/backdrop resolve false.
+     * Asks a yes/no question in the <dialog>; resolves true for "Yes", false for "No" or Esc (a backdrop click does nothing).
      * Falls back to window.confirm where <dialog> is unsupported.
      * @param {string} key
      * @param {Record<string, unknown>} [params]

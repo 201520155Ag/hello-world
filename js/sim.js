@@ -101,9 +101,12 @@ function generateTerrain(city, rng) {
   const tiles = city.tiles;
   const waterTotal = Math.round(N * (BALANCE.WATER_MIN + rng.next() * (BALANCE.WATER_MAX - BALANCE.WATER_MIN)));
   const blobs = BALANCE.WATER_BLOBS_MIN + rng.int(BALANCE.WATER_BLOBS_MAX - BALANCE.WATER_BLOBS_MIN + 1);
+  const blobSize = Math.round(waterTotal / blobs);
   let left = waterTotal;
-  for (let b = 0; b < blobs && left > 0; b++) {
-    const size = b === blobs - 1 ? left : Math.round(waterTotal / blobs);
+  // Bounded retries rather than a fixed blob count: a start inside a grass pocket already enclosed by
+  // water and the map edge grows only a few tiles, and the share must still be reached.
+  for (let guard = 0; left > 0 && guard < 64; guard++) {
+    const size = left < blobSize * 1.5 ? left : blobSize;   // the last blob takes the remainder
     const start = pickBlobStart(tiles, rng);
     if (start < 0) break;
     left -= growBlob(tiles, rng, start, size, TERRAIN.WATER);
@@ -276,7 +279,7 @@ export function applyTool(city, tool, tiles) {
   if (TOOL_ZONE[tool]) return zoneTiles(city, TOOL_ZONE[tool], tiles);
   if (tool === TOOL.BULLDOZE) return bulldoze(city, tiles);
   if (toolKind(tool) === 'single' && BUILDINGS[tool]) {
-    if (!Array.isArray(tiles) || !tiles.length) return fail(ERR.BOUNDS);
+    if (!Array.isArray(tiles) || !Number.isInteger(tiles[0]) || !city.tiles[tiles[0]]) return fail(ERR.BOUNDS);
     const { x, y } = xyOf(tiles[0]);
     return placeBuilding(city, tool, x, y);
   }

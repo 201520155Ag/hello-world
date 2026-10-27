@@ -232,21 +232,23 @@ export function createRenderer(canvas, camera) {
         g.fillRect(areaX + c * cw + cw * 0.25, areaY + r * ch + ch * 0.25, cw * 0.5, ch * 0.5);
       }
     }
+    // Level-3 details stay inside the cell (the roof band is 9 px tall): paint that crossed into the
+    // tile above was left behind when this lot declined, and erased when that tile repainted.
     if (level === 3) {
       if (zone === ZONE.R) {
         g.fillStyle = skin.treeTrunk;
-        g.fillRect(bx + bw - 7, by - 3, 4, 6);
+        g.fillRect(bx + bw - 7, by, 4, 6);
       } else if (zone === ZONE.C) {
         g.fillStyle = skin.roof[zone];
         g.fillRect(bx + 2, by + roofH + areaH / 2 - 1, bw - 4, 3);
       } else {
         g.fillStyle = skin.roadEdge;
-        g.fillRect(bx + 3, by - 4, 4, 8);
-        g.fillRect(bx + 10, by - 4, 4, 8);
+        g.fillRect(bx + 3, by + 4, 4, 7);
+        g.fillRect(bx + 10, by + 4, 4, 7);
         g.fillStyle = skin.smoke;
         g.beginPath();
-        g.arc(bx + 5, by - 6, 2.5, 0, Math.PI * 2);
-        g.arc(bx + 13, by - 7, 3, 0, Math.PI * 2);
+        g.arc(bx + 5, by + 2.5, 2, 0, Math.PI * 2);
+        g.arc(bx + 13, by + 2.5, 2.5, 0, Math.PI * 2);
         g.fill();
       }
     }
@@ -256,14 +258,8 @@ export function createRenderer(canvas, camera) {
     }
   }
 
-  /** Paints one tile's ground layer and anything on it except a service building. */
-  function paintTile(city, i) {
-    const t = city.tiles[i];
-    const x = i % MAP_W;
-    const y = (i - x) / MAP_W;
-    const px = x * TILE;
-    const py = y * TILE;
-    bakeKeys[i] = tileKey(t, city.servicesCut);
+  /** Ground layer and whatever stands on tile (x, y) except a service building. */
+  function paintTileLayers(city, t, x, y, px, py) {
     if (t.terrain === TERRAIN.WATER) {
       paintWater(city, x, y, px, py);
       return;
@@ -276,6 +272,26 @@ export function createRenderer(canvas, camera) {
       if (t.level > 0) paintZoneBuilding(t, x, y, px, py);
       else paintLot(t.zone, px, py);
     } else if (t.terrain === TERRAIN.TREE) paintTree(px, py, h);
+  }
+
+  /**
+   * Paints one tile, clipped to its own cell: the bake is incremental, so any paint that leaked into a
+   * neighbour (sub-pixel specks, building details) would survive this tile's next repaint and vanish
+   * on the neighbour's.
+   */
+  function paintTile(city, i) {
+    const t = city.tiles[i];
+    const x = i % MAP_W;
+    const y = (i - x) / MAP_W;
+    const px = x * TILE;
+    const py = y * TILE;
+    bakeKeys[i] = tileKey(t, city.servicesCut);
+    g.save();
+    g.beginPath();
+    g.rect(px, py, TILE, TILE);
+    g.clip();
+    paintTileLayers(city, t, x, y, px, py);
+    g.restore();
   }
 
   function glyphPolygon(points, w, h) {
@@ -635,11 +651,16 @@ export function createRenderer(canvas, camera) {
 
   // -------------------------------------------------------------- public ---
 
+  /** devicePixelRatio capped at 2 (phone frame rate), 1 when the browser reports nothing usable. */
+  function cappedDpr() {
+    const raw = window.devicePixelRatio;
+    return Math.min(raw > 0 ? raw : 1, 2);
+  }
+
   function resize() {
     const cssW = Math.max(1, canvas.clientWidth | 0);
     const cssH = Math.max(1, canvas.clientHeight | 0);
-    const raw = window.devicePixelRatio;
-    const dpr = Math.min(raw > 0 ? raw : 1, 2);
+    const dpr = cappedDpr();
     const w = Math.round(cssW * dpr);
     const h = Math.round(cssH * dpr);
     if (canvas.width !== w) canvas.width = w;
@@ -659,6 +680,9 @@ export function createRenderer(canvas, camera) {
   }
 
   function draw(city, view, nowMs) {
+    // A DPR-only change (window moved to another display, OS scaling) keeps the CSS size, so no
+    // resize fires; re-read it here so the backing store never stays blurry or oversized.
+    if (cappedDpr() !== camera.dpr) resize();
     if (!city || !city.tiles || city.tiles.length !== TILE_COUNT) {
       if (forceCompose || prev.city !== null || prev.camVersion !== camera.version) {
         fillBackground();

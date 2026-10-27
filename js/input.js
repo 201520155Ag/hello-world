@@ -22,7 +22,7 @@ const ARROW_KEYS = Object.freeze({ ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLef
  * @param {{ getTool(): string, onHover(t: {x:number,y:number}|null): void, onTap(x:number,y:number): void,
  *   onLongPress(x:number,y:number): void, onDrag(phase:string,x0:number,y0:number,x1:number,y1:number): void,
  *   onCommand(cmd: object): void, onCameraChange(): void }} handlers
- * @returns {{ update(dtMs:number): void, setEnabled(on:boolean): void, destroy(): void }}
+ * @returns {{ update(dtMs:number): void, setEnabled(on:boolean): void, cancelPaint(): void, destroy(): void }}
  */
 export function createInput(canvas, camera, handlers) {
   let enabled = false;
@@ -193,8 +193,9 @@ export function createInput(canvas, camera, handlers) {
     pointers.delete(e.pointerId);
     if (type === 'touch') lastTouchMs = e.timeStamp;
     if (pinch) {
-      // The pinch owns the rest of this touch: a remaining finger must not start a paint.
-      pinch.ended = true;
+      // The pinch owns the rest of this touch: a remaining finger must not start a paint. Only one
+      // of its own two fingers ends it; a stray third touch (palm, fingertip) lifting is ignored.
+      if (e.pointerId === pinch.a || e.pointerId === pinch.b) pinch.ended = true;
       if (pointers.size === 0) pinch = null;
     } else if (gesture && gesture.id === e.pointerId) {
       endGesture(gesture, screenPos(e), e.type === 'pointerup', e.timeStamp);
@@ -234,6 +235,15 @@ export function createInput(canvas, camera, handlers) {
 
   function onContextMenu(e) {
     e.preventDefault();
+  }
+
+  /**
+   * A tap is handled on pointerup, which may open a panel; the click the browser then synthesizes
+   * would be hit-tested against the new layout and land on that panel. The canvas has no click
+   * handlers, so cancelling touchend's default actions loses nothing.
+   */
+  function onTouchEnd(e) {
+    if (enabled && e.cancelable) e.preventDefault();
   }
 
   /* ---------------------------------------------------------------- keyboard */
@@ -342,7 +352,7 @@ export function createInput(canvas, camera, handlers) {
     [canvas, 'pointerdown', onPointerDown], [canvas, 'pointermove', onPointerMove],
     [canvas, 'pointerup', onPointerUp], [canvas, 'pointercancel', onPointerUp],
     [canvas, 'pointerleave', onPointerLeave], [canvas, 'wheel', onWheel, { passive: false }],
-    [canvas, 'contextmenu', onContextMenu],
+    [canvas, 'contextmenu', onContextMenu], [canvas, 'touchend', onTouchEnd, { passive: false }],
     [window, 'keydown', onKeyDown], [window, 'keyup', onKeyUp], [window, 'blur', onBlur],
   ];
   for (const [target, type, fn, opts] of listeners) target.addEventListener(type, fn, opts);
@@ -378,5 +388,5 @@ export function createInput(canvas, camera, handlers) {
     for (const [target, type, fn, opts] of listeners) target.removeEventListener(type, fn, opts);
   }
 
-  return { update, setEnabled, destroy };
+  return { update, setEnabled, cancelPaint, destroy };
 }

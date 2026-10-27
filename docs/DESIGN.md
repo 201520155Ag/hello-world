@@ -46,7 +46,7 @@ Import graph (arrows = "imports from"): `sim → data`; `camera → data`; `rend
 | Map | 40 × 40 (`MAP_W = MAP_H = 40`); save carries `w`,`h` |
 | Tile | `TILE = 32` world px at zoom 1; zoom 0.25–3.0 (`ZOOM_MIN` 0.25 so `fitMap()` shows the whole map on a 360 px phone) |
 | Terrain | `grass` (buildable), `tree` (buildable; auto-cleared for `BALANCE.TREE_CLEAR` = $3 surcharge per tile), `water` (never buildable) |
-| Generation | Seeded: 2–3 water blobs (6–12 % of tiles), tree clusters (~12 %), the central 12×12 is always grass |
+| Generation | Seeded: 2–3 water blobs (6–12 % of tiles; a blob start that lands in an enclosed grass pocket is retried, bounded, so the share is always reached), tree clusters (~12 %), the central 12×12 is always grass |
 | Variant | Visual variety is stateless: `tileVariant(x, y, seed) = (x * 7 + y * 13 + seed) & 3` |
 
 ### 1.2 Clock
@@ -361,7 +361,7 @@ export function toolTiles(city, tool, x0, y0, x1, y1)  // number[]:
    //            when the pointer is on the last column/row (anchor = min(x1, MAP_W − w), min(y1, MAP_H − h)); [] if (x1,y1) is off the map
    // 'pan'    → [idx(x1,y1)] if in bounds else []
 export function preview(city, tool, tiles)      // Preview: per-tile validity + total cost + ERR.MONEY if cash - cost < BUILD_FLOOR; pure
-export function applyTool(city, tool, tiles)    // dispatch: road→placeRoad, zone_*→zoneTiles, bulldoze→bulldoze, service→placeBuilding(tiles[0]);
+export function applyTool(city, tool, tiles)    // dispatch: road→placeRoad, zone_*→zoneTiles, bulldoze→bulldoze, service→placeBuilding(tiles[0]) (a non-integer or out-of-map tiles[0] → ERR.BOUNDS);
                                                 // pan/inspect → { ok:false, error: ERR.NOTHING, cost:0, changed:[] }
 export function placeRoad(city, tiles)          // ActionResult
 export function zoneTiles(city, zone, tiles)    // ActionResult
@@ -431,13 +431,15 @@ export function createRenderer(canvas, camera)   // Renderer
 // Renderer = {
 //   resize(),                 // reads canvas.clientWidth/Height and min(devicePixelRatio,2); sets canvas.width/height; camera.resize(...)
 //   setSkin(id),              // swaps palette, forces a full rebake on next draw (canvas only; CSS variables are ui.applySkin's job)
-//   draw(city, view, nowMs),  // §3.4.1; city may be null (draws skin bg only)
+//   draw(city, view, nowMs),  // §3.4.1; city may be null (draws skin bg only). First re-runs resize() when min(devicePixelRatio,2)
+//                             // differs from camera.dpr: a DPR-only change (display move, OS scaling) keeps the CSS size, so
+//                             // no ResizeObserver/resize event fires, and the backing store would otherwise stay stale
 //   invalidate(),             // force full rebake + redraw on next draw
 // }
 ```
 **3.4.1 Bake.** Offscreen canvas `MAP_W*TILE × MAP_H*TILE` (1280², 1×, no dpr). On `draw`: if the `city` object identity changed, `setSkin`/`invalidate` was called, or `city.dirty.all` → repaint every tile; else repaint each index in `city.dirty.tiles` (for a tile with `building`, repaint the whole footprint from its anchor; for roads/water also repaint the 4 neighbours so edge masks stay right). Then set `city.dirty.all = false; city.dirty.tiles.length = 0`. **Render is the only module that clears `dirty`.**
 
-Tile painting (per tile, in order): ground (`ground[variant]` + 3–5 `groundDetail` specks hashed from `(x,y,seed)`), water (`water` + `waterEdge` 2 px rim on sides adjoining land), tree (`treeTrunk` + two `treeCanopy` circles), road (asphalt square, arms extended to connected 4-neighbours; `roadEdge` 1 px on unconnected sides; dashed `roadLine` along connected axes; isolated road = square with a dot), level-0 lot (`lot[zone]` tint + 1 px dashed outline in zone colour), building (inset box in `wall[zone][variant]`, roof band `roof[zone]` whose height grows with level, window grid `(level+1)×(level+1)` in `window` or `windowLit` when `night` and `powered`; level 3 detail: R chimney, C sign strip in roof colour, I two stacks; unpowered developed tile drawn 40 % darker), services (whole footprint at anchor: `service[id].base` box + glyph in `accent`: power = two stacks + bolt, water = tank on legs, park = three circles + path, police = shield, fire = flame polygon, school = flag, hospital = cross; drawn desaturated/greyer when `city.servicesCut` and the building has a `cover` bit).
+Tile painting (per tile, in order): ground (`ground[variant]` + 3–5 `groundDetail` specks hashed from `(x,y,seed)`), water (`water` + `waterEdge` 2 px rim on sides adjoining land), tree (`treeTrunk` + two `treeCanopy` circles), road (asphalt square, arms extended to connected 4-neighbours; `roadEdge` 1 px on unconnected sides; dashed `roadLine` along connected axes; isolated road = square with a dot), level-0 lot (`lot[zone]` tint + 1 px dashed outline in zone colour), building (inset box in `wall[zone][variant]`, roof band `roof[zone]` whose height grows with level, window grid `(level+1)×(level+1)` in `window` or `windowLit` when `night` and `powered`; level 3 detail, drawn within the roof band: R chimney, C sign strip in roof colour, I two stacks with smoke; unpowered developed tile drawn 40 % darker). Every per-tile paint is clipped to its own 32×32 cell: the bake is incremental, so paint that leaked into a neighbour would survive this tile's repaint and vanish on the neighbour's, services (whole footprint at anchor: `service[id].base` box + glyph in `accent`: power = two stacks + bolt, water = tank on legs, park = three circles + path, police = shield, fire = flame polygon, school = flag, hospital = cross; drawn desaturated/greyer when `city.servicesCut` and the building has a `cover` bit).
 
 **3.4.2 Per-frame compose** (skip entirely when nothing changed: `camera.version`, `view` fields, `nowMs` blink phase and dirty all unchanged — keep a cheap signature):
 1. Fill `skin.bg`; `camera.applyTransform(ctx)`; `imageSmoothingEnabled = zoom < 1`; `drawImage(bake, 0, 0)`.
@@ -463,14 +465,16 @@ export function createInput(canvas, camera, handlers)   // Input
 //   onCommand(cmd),                             // see command list
 //   onCameraChange(),                           // after any pan/zoom performed by input
 // }
-// Input = { update(dtMs): void /* held WASD pan: KEY_PAN_SPEED px/s */, setEnabled(on: boolean): void, destroy(): void }
+// Input = { update(dtMs): void /* held WASD pan: KEY_PAN_SPEED px/s */, setEnabled(on: boolean): void,
+//           cancelPaint(): void /* abandon a live line/rect drag (onDrag('cancel')); main calls it from api.setTool */, destroy(): void }
 ```
 Pointer rules (Pointer Events only; `canvas.style.touchAction = 'none'`, `contextmenu` prevented):
 - One pointer, left button/touch: kind `line`/`rect` → `onDrag('start')` at down tile, `onDrag('move')` on tile change, `onDrag('end')` at up. Kind `pan`/`single` → movement beyond `TAP_PX` pans; release within `TAP_MS` and `TAP_PX` → `onTap`. A `pointerup` for `line`/`rect` without any move is still `start`+`end` on the same tile (one-tile paint).
 - Right or middle button drag always pans; a right **click** (no move) → `onCommand({type:'cancel'})`.
-- Second touch pointer: cancel any drag (`onDrag('cancel')`) and switch to two-finger pan + pinch (`camera.zoomAt(dist/prevDist, midX, midY)`, `camera.panBy(midDelta)`).
+- Second touch pointer: cancel any drag (`onDrag('cancel')`) and switch to two-finger pan + pinch (`camera.zoomAt(dist/prevDist, midX, midY)`, `camera.panBy(midDelta)`). The pinch tracks exactly those two pointers: further touches (a palm, a third fingertip) are ignored on down, move and up, and it ends only when one of its own fingers lifts; nothing starts a paint until every finger is up.
 - Wheel: `camera.zoomAt(deltaY < 0 ? ZOOM_STEP : 1/ZOOM_STEP, sx, sy)`.
 - Long press (no move for `LONG_PRESS_MS`) → `onLongPress(x, y)` and the gesture ends (no tap/drag end).
+- `touchend` on the canvas is `preventDefault`ed (non-passive): a tap is handled on `pointerup` and may open the bottom sheet, and the click the browser would synthesize afterwards is hit-tested against the new layout (it would land on the sheet's tabs or close button). The canvas has no click handlers, so nothing is lost.
 - `onHover` on pointer move/leave; `onHover(null)` when outside the map.
 Keyboard (`window` keydown; ignored when `!enabled`, when focus is in `input/select/textarea`, or while a modal `<dialog>` is open so Esc reaches its native cancel; `preventDefault` on handled keys). Space/Enter are left to a focused button, and arrows to a focused tab list. Tool keys (`r b i z`) first cancel a live paint so the new tool is never applied to the old drag shape:
 
@@ -540,19 +544,23 @@ export function createUI(api)   // wires the static DOM of index.html; builds to
 //                                     // HUD/toolbar/zoom buttons refocus the canvas after a click; closing a panel that holds focus does too
 //   update(city, view),               // HUD (cash/pop/jobs/approval face/date/RCI bars with aria-valuenow), speed & tool & overlay aria-pressed,
 //                                     // debt banner, inspector (if view.selected), budget panel (if open) — called ≤ 10 Hz by main and after actions
-//   toast(key, params?, kind?: 'info'|'warn'|'error'),   // max 3 stacked, 3.5 s, aria-live region
+//   toast(key, params?, kind?: 'info'|'warn'|'error'),   // max 3 stacked, 3.5 s, aria-live region: `#toasts` while playing, `#landing-toasts` while the
+//                                     // landing is shown (`#app` is inert then, so a toast inside it never reaches assistive technology);
+//                                     // each toast is `dir="auto"` so one created before a language switch keeps its own text direction
 //   setPriceBadge(sx, sy, text|null), // DOM badge near the pointer; null hides
 //   openPanel(id: 'inspector'|'budget'|'help'|'save'|null), isPanelOpen(id?): boolean (any panel, or that panel when id is given),
+//                                     // tab list: ArrowLeft/ArrowRight move focus in the visual direction (reversed under dir=rtl); a focused tab is
+//                                     // scrolled into view (`scrollIntoView` nearest: the browser does not do it reliably when the strip overflows)
 //   confirm(key, params?): Promise<boolean>,             // <dialog>-based, keyboard accessible
 //   applySkin(id),                    // sets CSS vars --ui-bg --ui-panel --ui-fg --ui-accent from SKINS[id].ui; data-skin on <body>
 //   relabel(),                        // applyDom + rebuild dynamic labels (lang change)
 // }
 ```
-Inspector content for `view.selected`: coordinates; terrain/road/lot/building line; residents or jobs; power/water/access status; land value; pollution; services list; for zoned tiles the block line `t('inspect.whyNot', {reason: t('block.'+block)})` or `t('inspect.growing')`, followed by the hint (`hint.<block>`; for `power` use `hint.powerCapacity` when `stats.powerUse > stats.powerCap`, for `water` likewise, for `demand` use `hint.demand.<zone>`). For a service: name, radius, upkeep. Budget panel: tax slider (`#tax-slider`, step 1), last month income/upkeep/interest/net, power/water use vs cap, `budget.waiting` from `stats.blockCounts`, debt lines, 60-month cash sparkline on `#budget-spark` (240×48 canvas drawn by ui). Save panel: Save/Load buttons, read-only `<textarea id="share-code">`, Copy code, Copy link, import textarea + Import button, sharing note. Help panel: controls, keys, how-to text, legend swatches, blocker colour legend. Toolbar buttons: `title`/`aria-label` = tool name + cost + key.
+Inspector content for `view.selected`: coordinates; terrain/road/lot/building line; residents or jobs; power/water/access status; land value; pollution; services list; for zoned tiles the block line `t('inspect.whyNot', {reason: t('block.'+block)})` or `t('inspect.growing')`, followed by the hint (`hint.<block>`; for `power` use `hint.powerCapacity` when `stats.powerUse > stats.powerCap`, for `water` likewise, for `demand` use `hint.demand.<zone>`). For a service: name, radius, upkeep. Budget panel: tax slider (`#tax-slider`, step 1), last month's settled income/upkeep/interest/net (`stats.income`/`stats.expenses`; the interest share is reconstructed from the last history entry: cash before settlement = cash after − income + expenses; all zero before the first month end), power/water use vs cap, `budget.waiting` from `stats.blockCounts`, debt lines, 60-month cash sparkline on `#budget-spark` (240×48 canvas drawn by ui). Save panel: Save/Load buttons, read-only `<textarea id="share-code">`, Copy code, Copy link, import textarea + Import button, sharing note. Help panel: controls, keys, how-to text, legend swatches, blocker colour legend. Toolbar buttons: `title`/`aria-label` = tool name + cost + key.
 
-**DOM id contract** (index.html; used by ui, main and tests): `#app`, `#landing`, `#landing-name`, `#btn-new`, `#btn-continue`, `#btn-continue-meta`, `#btn-shared`, `#game-canvas`, `#hud-cash`, `#hud-pop`, `#hud-jobs`, `#hud-approval`, `#hud-date`, `#rci-r`, `#rci-c`, `#rci-i`, `#speed-0`..`#speed-3`, `#toolbar` (buttons `button[data-tool]`), `#overlay-select`, `#skin-select`, `#lang-select`, `#btn-help`, `#btn-save-panel`, `#btn-zoom-in`, `#btn-zoom-out`, `#btn-center`, `#panels`, `#panel-inspector`, `#panel-budget`, `#panel-help`, `#panel-save`, `#panel-close`, `#tax-slider`, `#tax-value`, `#budget-spark`, `#debt-banner`, `#share-code`, `#btn-copy-code`, `#btn-copy-link`, `#share-import`, `#btn-import`, `#btn-save`, `#btn-load`, `#price-badge`, `#toasts[aria-live=polite]`, `#confirm` (`<dialog aria-labelledby="confirm-text">`).
+**DOM id contract** (index.html; used by ui, main and tests): `#app`, `#landing`, `#landing-name`, `#btn-new`, `#btn-continue`, `#btn-continue-meta`, `#btn-shared`, `#game-canvas`, `#hud-cash`, `#hud-pop`, `#hud-jobs`, `#hud-approval`, `#hud-date`, `#rci-r`, `#rci-c`, `#rci-i`, `#speed-0`..`#speed-3`, `#toolbar` (buttons `button[data-tool]`), `#overlay-select`, `#skin-select`, `#lang-select`, `#btn-help`, `#btn-save-panel`, `#btn-zoom-in`, `#btn-zoom-out`, `#btn-center`, `#panels`, `#panel-inspector`, `#panel-budget`, `#panel-help`, `#panel-save`, `#panel-close`, `#tax-slider`, `#tax-value`, `#budget-spark`, `#debt-banner`, `#share-code`, `#btn-copy-code`, `#btn-copy-link`, `#share-import`, `#btn-import`, `#btn-save`, `#btn-load`, `#price-badge`, `#toasts[aria-live=polite]`, `#landing-toasts[aria-live=polite]` (inside `#landing`), `#confirm` (`<dialog aria-labelledby="confirm-text">`).
 
-**Layout** (`css/style.css`): CSS variables `--ui-bg --ui-panel --ui-fg --ui-accent` (+ RCI colours r `#4caf50`, c `#2f80ed`, i `#f2994a`). Desktop ≥ 900 px: grid `header / [toolbar 64px | canvas 1fr | panels 320px]`, `100dvh`, `body{overflow:hidden}`. Phone < 900 px: header in two rows (title+date+speed / cash+pop+face+RCI mini bars), canvas fills, toolbar as a horizontally scrollable bottom strip of ≥ 44×44 buttons (`padding-bottom: env(safe-area-inset-bottom)`), panels as a bottom sheet above the tool strip (`inset-block-end: var(--toolbar-h)`, `max-height: calc(55vh - var(--toolbar-h))`) so tools stay tappable while a sheet is open; stat labels stay visible at 9 px (title tooltips do not exist on touch). Zoom +/−/centre buttons float bottom-end over the canvas. Canvas `display:block; width:100%; height:100%; touch-action:none`. Logical properties only (`margin-inline-*`, `inset-inline-*`, `text-align:start`) so `dir=rtl` just works; RCI bars grow from `inline-start`. `:focus-visible{outline:3px solid var(--ui-accent)}`. `@media (prefers-reduced-motion: reduce){ *{transition:none!important; animation:none!important} }`. No horizontal scroll at 360 px (`html{overscroll-behavior:none}`).
+**Layout** (`css/style.css`): CSS variables `--ui-bg --ui-panel --ui-fg --ui-accent` (+ RCI colours r `#4caf50`, c `#2f80ed`, i `#f2994a`). Desktop ≥ 900 px: grid `header / [toolbar 64px | canvas 1fr | panels 320px]`, `100dvh`, `body{overflow:hidden}`. Phone < 900 px: header in two rows (title+date+speed / cash+pop+face+RCI mini bars), canvas fills, toolbar as a horizontally scrollable bottom strip of ≥ 44×44 buttons (`padding-bottom: env(safe-area-inset-bottom)`; `scroll-padding` equal to its inline padding so snapping never puts the first tool flush with the screen edge), panels as a bottom sheet above the tool strip (`inset-block-end: var(--toolbar-h)`, `max-height: calc(55vh - var(--toolbar-h))`) so tools stay tappable while a sheet is open; stat labels stay visible at 9 px (title tooltips do not exist on touch; every language's HUD labels fit the 11ch cap). Phone toasts stack from the top of the stage, below the debt banner: `ui.update` writes the banner's rendered height to `--banner-h` on `.stage` and `.toasts` uses `inset-block-start: max(48px, calc(16px + var(--banner-h)))`. Phone toasts sit below the sheet in z-order (`.toasts{z-index:5}` vs `.panels{z-index:10}`): in landscape the sheet reaches the toast rows and its tabs must stay readable (a covered toast is still announced by the live region). Zoom +/−/centre buttons float bottom-end over the canvas; the desktop toast column keeps `inset-inline: 52px` so a 480 px toast never overlaps them in a narrow stage (900 px with a panel open). Canvas `display:block; width:100%; height:100%; touch-action:none`. Logical properties only (`margin-inline-*`, `inset-inline-*`, `text-align:start`) so `dir=rtl` just works; RCI bars grow from `inline-start`. The one physical exception is safe-area compensation on phones (`viewport-fit=cover` runs the layout under a landscape notch): `.hud` and `.toolbar` add `env(safe-area-inset-left|right)` to their inline padding, and `.debt-banner`, `.toasts`, `.zoom-controls` and the `.panels` sheet get the same values as `margin-left`/`margin-right`. `:focus-visible{outline:3px solid var(--ui-accent); outline-offset:2px}`; the scrolling `.tablist` carries `padding:5px; margin:-5px` so the ring is not clipped at the scroll container's padding edge, and `.tabs{gap:5px}` keeps the close button off the last tab's ring. `@media (prefers-reduced-motion: reduce){ *{transition:none!important; animation:none!important} }`. No horizontal scroll at 360 px (`html{overscroll-behavior:none}`).
 
 ### 3.9 `js/main.js` (integrator) — exact duties
 ```
@@ -562,7 +570,9 @@ boot():
      hover:null, cursor:null, drag:null, ghost:null, selected:null, reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches }
   3. ui = createUI(api); ui.applySkin(settings.skin); renderer.setSkin(settings.skin)
   4. input = createInput(canvas, camera, handlers); input.setEnabled(false)
-  5. ResizeObserver on canvas → renderer.resize(); initial resize
+  5. ResizeObserver on canvas → renderer.resize() + renderer.draw(view.playing ? city : null, view, now) in the same callback
+     (reassigning canvas.width clears the bitmap and RO callbacks run after this frame's rAF, so a deferred redraw would
+     present one blank frame per panel open/close or resize); initial resize. DPR-only changes are render's job (§3.4).
   6. sharedCode = codeFromHash(location.hash); ui.showLanding({ meta: metaOf(newestLocalKey()), hasShared: !!sharedCode })
   7. addEventListener visibilitychange/pagehide → autosave()
   8. requestAnimationFrame(loop)
@@ -575,7 +585,7 @@ startCity(c, { fromLink }):
 api.newCity({name}): city = sim.createCity({ name: name || 'Main City', seed: (Math.random()*2**32)>>>0, skin: settings.skin }); startCity
 api.continueCity(): r = loadLocal(newestLocalKey()); ok → startCity else toast r.error
 api.loadShared(): r = decodeShare(sharedCode); ok → startCity(fromLink) + clearHash() else toast 'share.invalid'
-api.setTool(t): view.tool = t; view.drag = null; refreshGhost(); ui.update
+api.setTool(t): input.cancelPaint() (a toolbar click mid-drag never applies the new tool to the old shape); view.tool = t; view.drag = null; refreshGhost(); ui.update
 api.setSpeed / togglePause → sim.*; ui.update          api.setTax(n) → sim.setTaxRate; ui.update
 api.setSkin(id): city.skin = id; settings.skin = id; saveSettings; renderer.setSkin(id); ui.applySkin(id)
 api.setLang(id): setLang(id); saveSettings({lang:id}); ui.relabel(); ui.update
@@ -597,7 +607,8 @@ handlers.onCommand(cmd): tool → api.setTool; zoneCycle → api.setTool(cycleZo
    cursorApply → applyAt(toolTiles(city, tool, cx,cy,cx,cy)) or api.select for pan/inspect; save → api.save()
 handlers.onCameraChange(): refresh price badge position
 
-applyAt(tiles): r = sim.applyTool(city, view.tool, tiles); if (!r.ok && (tiles.length === 1 || r.error !== ERR.NOTHING)) ui.toast(r.error,{},'warn');
+applyAt(tiles): r = sim.applyTool(city, view.tool, tiles); if (!r.ok && (tiles.length === 1 || r.error !== ERR.NOTHING)) ui.toast(r.error, params, 'warn')
+               where params = { n: formatMoney(BALANCE.BUILD_FLOOR) } for ERR.MONEY (so the quoted floor is grouped like the HUD cash) else {};
                refreshGhost(); ui.update(city, view)
 refreshGhost(): shape = view.drag ?? (view.hover ?? view.cursor as a 1-tile shape); view.ghost = shape ? sim.preview(city, view.tool, sim.toolTiles(...)) : null;
                ui.setPriceBadge(..., ghost && ghost.cost ? formatMoney(ghost.cost) : null)
@@ -672,7 +683,7 @@ hint.demand.c "Shops need customers — zone more residential."  hint.demand.i "
 hint.value "Parks, schools and hospitals raise land value."  hint.pollution "Move industry away or add parks."  hint.full "This lot is at maximum level."
 budget.tax "Tax rate: {n}%"  budget.lastMonth "Last month"  budget.income "Income"  budget.upkeep "Upkeep"  budget.interest "Interest"
 budget.net "Net"  budget.power "Power: {use} / {cap}"  budget.water "Water: {use} / {cap}"  budget.history "Cash, last {n} months"
-budget.debt "In debt: 1% interest per month, approval −10."  budget.cut "Below −$5,000: police, fire, schools, hospitals and parks are suspended."
+budget.debt "In debt: 1% interest per month, approval −10."  budget.cut "Below {n}: police, fire, schools, hospitals and parks are suspended."  ({n} = formatMoney(BALANCE.SERVICES_CUT_CASH))
 budget.waiting "Lots waiting: {road} need a road, {power} need power, {water} need water, {demand} low demand, {value} low land value"
 save.save "Save"  save.load "Load"  save.saved "City saved."  save.loaded "City loaded."  save.none "No saved city."
 save.failed "Could not save — storage is unavailable."  save.confirmLoad "Load the saved city? Unsaved progress is lost."
@@ -688,7 +699,7 @@ help.howTo "How to grow"
 help.howToText "1. Draw roads. 2. Zone lots touching roads. 3. Power them with a plant in range. 4. Add a water tower for taller buildings. 5. Balance homes and jobs — watch the RCI bars. 6. Parks and schools raise land value."
 help.legend "Legend"  help.legend.r "Residential — green"  help.legend.c "Commercial — blue"  help.legend.i "Industrial — orange"
 help.legend.badges "Badges: lightning = no power, drop = no water, road sign = no road access"  help.blockers "Blocker overlay colours"
-err.water "Can't build on water."  err.occupied "That spot is occupied."  err.money "Not enough money (limit −$10,000)."
+err.water "Can't build on water."  err.occupied "That spot is occupied."  err.money "Not enough money (limit {n})."  ({n} = formatMoney(BALANCE.BUILD_FLOOR))
 err.bounds "Outside the map."  err.nothing "Nothing to do here."  err.save "The save data is damaged."
 err.version "Made with a newer version of the game."  err.storage "Storage is unavailable in this browser."  err.unexpected "Something went wrong."
 toast.welcome "Welcome to {name}! Draw a road and zone next to it."  toast.firstHouse "Your first residents moved in!"
@@ -703,7 +714,7 @@ a11y.canvas "City map. Pick a tool, move the cursor with the arrow keys and pres
 a11y.toolbar "Build tools"  a11y.speed "Game speed"  a11y.zoomIn "Zoom in"  a11y.zoomOut "Zoom out"  a11y.center "Fit map"
 a11y.rci "{zone} demand {n} percent"  a11y.toasts "Notifications"  a11y.panels "Panels"
 ```
-A key-set equality test across the four dictionaries is part of acceptance. Interpolation only uses `{name}`-style placeholders; avoid plurals by phrasing.
+A key-set equality test across the four dictionaries is part of acceptance. Interpolation only uses `{name}`-style placeholders; avoid plurals by phrasing (e.g. Russian `население {pop}`, `{n} %` rather than a count noun fixed to one case). Locales that relabel the demand bars (ru Ж/К/П, he מ/ס/ת) name those tags in `help.howToText` instead of "RCI".
 
 ---
 

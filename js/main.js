@@ -81,7 +81,10 @@ function refreshGhost() {
 function applyAt(tiles) {
   if (!city || !tiles.length) return;
   const r = sim.applyTool(city, view.tool, tiles);
-  if (!r.ok && (tiles.length === 1 || r.error !== ERR.NOTHING)) ui.toast(r.error, {}, 'warn');
+  if (!r.ok && (tiles.length === 1 || r.error !== ERR.NOTHING)) {
+    // err.money quotes the floor via {n} so it is grouped like the HUD cash figure in every locale.
+    ui.toast(r.error, r.error === ERR.MONEY ? { n: formatMoney(BALANCE.BUILD_FLOOR) } : {}, 'warn');
+  }
   refreshGhost();
   updateUi();
 }
@@ -165,6 +168,7 @@ const api = {
   },
   setTool(tool) {
     if (!TOOL_ORDER.includes(tool)) return;
+    input.cancelPaint();   // a toolbar click mid-drag must not apply the new tool to the old shape
     view.tool = tool;
     view.drag = null;
     refreshGhost();
@@ -263,10 +267,17 @@ const handlers = {
 const input = createInput(canvas, camera, handlers);
 input.setEnabled(false);
 
-// 5. Keep the backing store in sync with the canvas's CSS size.
-if (typeof ResizeObserver === 'function') new ResizeObserver(() => renderer.resize()).observe(canvas);
-else window.addEventListener('resize', () => renderer.resize());
-renderer.resize();
+// 5. Keep the backing store in sync with the canvas's CSS size (renderer.draw itself follows
+//    devicePixelRatio changes). Resize and redraw in the same task: reassigning canvas.width clears
+//    the bitmap, and a ResizeObserver callback runs after this frame's rAF, so leaving the repaint to
+//    the next frame would present one blank frame on every panel open/close and window resize.
+function syncCanvas() {
+  renderer.resize();
+  renderer.draw(view.playing ? city : null, view, performance.now());
+}
+if (typeof ResizeObserver === 'function') new ResizeObserver(syncCanvas).observe(canvas);
+else window.addEventListener('resize', syncCanvas);
+syncCanvas();
 
 // 6. Landing.
 const newestKey = newestLocalKey();

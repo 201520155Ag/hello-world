@@ -1,5 +1,6 @@
 /* Main City — layout, theme variables and components.
-   Logical properties only (inline/block) so dir="rtl" works without overrides.
+   Logical properties only (inline/block) so dir="rtl" works without overrides; the one exception is the
+   safe-area compensation in the phone block, because env(safe-area-inset-*) values are physical.
    --ui-* variables are set per skin by ui.applySkin(); the values here are the grassland defaults. */
 
 :root {
@@ -251,14 +252,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
   background: var(--ui-panel);
   border-inline-start: 1px solid var(--line);
 }
-/* The tab strip scrolls when long labels overflow; the close button sits outside it so it is always visible. */
+/* The tab strip scrolls when long labels overflow; the close button sits outside it so it is always visible.
+   A scroll container clips at its padding edge, so the strip carries 5px of padding (cancelled by a negative
+   margin) to leave room for the 3px focus ring at outline-offset 2px on every side of every tab, and the gap
+   before the close button is those same 5px so the button never paints over the last tab's ring. */
 .tabs {
   display: flex;
-  gap: 2px;
+  gap: 5px;
   padding: 6px;
   border-block-end: 1px solid var(--line);
 }
-.tablist { display: flex; flex: 1; min-width: 0; gap: 2px; overflow-x: auto; scrollbar-width: thin; }
+.tablist { display: flex; flex: 1; min-width: 0; gap: 2px; padding: 5px; margin: -5px; overflow-x: auto; scroll-padding: 5px; scrollbar-width: thin; }
 .tab {
   flex: 1 0 auto;
   min-height: 36px;
@@ -351,7 +355,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- Toasts ---------- */
 .toasts {
   position: absolute;
-  inset-inline: 0;
+  inset-inline: 52px;   /* clear of the floating zoom column (40px + 12px margin) on either side */
   inset-block-end: 16px;
   z-index: 30;
   display: flex;
@@ -391,7 +395,11 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* ---------- Phone (< 900px): stacked header, bottom toolbar strip, bottom-sheet panels ---------- */
 @media (max-width: 899px) {
   :root { --toolbar-h: calc(64px + env(safe-area-inset-bottom, 0px)); }
-  .hud { gap: 4px 8px; padding: 4px 8px; }
+  /* viewport-fit=cover extends the layout under a landscape notch and the rounded corners, so the HUD and
+     tool strip pad past the physical inline insets and the stage's floating elements are pushed inside them
+     (margins on an absolutely positioned box, which hold in both text directions). */
+  .hud { gap: 4px 8px; padding: 4px calc(8px + env(safe-area-inset-right, 0px)) 4px calc(8px + env(safe-area-inset-left, 0px)); }
+  .debt-banner, .toasts, .zoom-controls, .panels { margin-left: env(safe-area-inset-left, 0px); margin-right: env(safe-area-inset-right, 0px); }
   .hud-row { width: 100%; }
   .hud-top { justify-content: space-between; }
   .hud-ctrl { margin-inline-start: 0; }   /* wraps (inherited) so Help / Save & share are never scrolled off-screen */
@@ -416,16 +424,26 @@ button, input, select, textarea { font: inherit; color: inherit; }
     flex-direction: row;
     height: var(--toolbar-h);
     padding-block-end: calc(6px + env(safe-area-inset-bottom, 0px));
+    padding-left: calc(6px + env(safe-area-inset-left, 0px));
+    padding-right: calc(6px + env(safe-area-inset-right, 0px));
     overflow-x: auto;
     overflow-y: hidden;
     border-inline-end: 0;
     border-block-start: 1px solid var(--line);
     scroll-snap-type: x proximity;
+    /* snap positions respect the padding, so the first tool never snaps flush with the screen edge */
+    scroll-padding-left: calc(6px + env(safe-area-inset-left, 0px));
+    scroll-padding-right: calc(6px + env(safe-area-inset-right, 0px));
   }
   .tool { scroll-snap-align: start; }
   .zoom-controls { inset-block-start: 12px; inset-block-end: auto; }
   .debt-banner { inset-inline: 8px 60px; font-size: 12px; }
-  .toasts { inset-block-start: 48px; inset-block-end: auto; inset-inline: 8px 60px; align-items: stretch; padding: 0; }
+  /* --banner-h is the debt banner's rendered height (ui.update sets it on .stage; 0 while hidden),
+     so toasts never cover the banner's wrapped lines. */
+  .toasts { inset-block-start: max(48px, calc(16px + var(--banner-h, 0px))); inset-block-end: auto; inset-inline: 8px 60px; align-items: stretch; padding: 0; }
+  /* Below the sheet (.panels z-index 10): in landscape the sheet reaches the toast rows, and the
+     sheet's tabs must stay readable; a hidden toast is still announced by the aria-live region. */
+  .toasts { z-index: 5; }
   .panels {
     position: absolute;
     z-index: 10;
