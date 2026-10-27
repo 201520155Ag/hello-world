@@ -52,11 +52,15 @@ const renderer = createRenderer(canvas, camera);
 
 function updateUi() { if (city) ui.update(city, view); }
 
-/** Positions the DOM price badge next to `badgeAt` (or hides it when the ghost is free). */
+/**
+ * Positions the DOM price badge next to `badgeAt`, or hides it when the ghost is free or the anchor tile
+ * lies entirely outside the viewport (the renderer culls that ghost, so a badge would float over nothing).
+ */
 function placeBadge() {
   const g = view.ghost;
   if (!g || !g.cost || !badgeAt) { ui.setPriceBadge(0, 0, null); return; }
   const s = camera.tileToScreen(badgeAt.x, badgeAt.y);
+  if (s.x + s.size < 0 || s.y + s.size < 0 || s.x > camera.vw || s.y > camera.vh) { ui.setPriceBadge(0, 0, null); return; }
   ui.setPriceBadge(s.x + s.size, s.y, formatMoney(g.cost));
 }
 
@@ -121,7 +125,6 @@ function startCity(c, fromLink, toastKey) {
   sim.recomputeDerived(city);
   city.dirty.all = true;
   city.fromLink = fromLink;
-  camera.fitMap();
   renderer.setSkin(city.skin);
   ui.applySkin(city.skin);
   Object.assign(view, { playing: true, tool: TOOL.PAN, hover: null, cursor: null, drag: null, ghost: null, selected: null });
@@ -130,6 +133,11 @@ function startCity(c, fromLink, toastKey) {
   ui.openPanel(null);
   ui.hideLanding();
   ui.update(city, view);
+  // Fit only after the HUD shows real values: replacing the landing's '—' date can wrap the header
+  // (e.g. 1366 px wide), which shrinks the stage. renderer.resize() reads the canvas's client size,
+  // forcing that layout now, so fitMap() sees the stage the player will actually get.
+  renderer.resize();
+  camera.fitMap();
   ui.toast(toastKey, { name: city.name });
 }
 

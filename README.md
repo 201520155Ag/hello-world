@@ -7,7 +7,7 @@ zone land, keep the lights and water on, balance the budget and watch your town 
 laptop or a phone. There is no server and nothing to download: the whole game is a static
 web page.
 
-**Play:** `https://<user>.github.io/<repo>/` (replace with your GitHub Pages address).
+**Play:** https://201520155ag.github.io/hello-world/
 
 ## Features
 

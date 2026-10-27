@@ -198,20 +198,21 @@ export function createInput(canvas, camera, handlers) {
       if (e.pointerId === pinch.a || e.pointerId === pinch.b) pinch.ended = true;
       if (pointers.size === 0) pinch = null;
     } else if (gesture && gesture.id === e.pointerId) {
-      endGesture(gesture, screenPos(e), e.type === 'pointerup', e.timeStamp);
+      endGesture(gesture, e.type === 'pointerup', e.timeStamp);
       gesture = null;
     }
     if (type === 'touch') setHover(null);
   }
 
-  function endGesture(g, p, completed, nowMs) {
+  function endGesture(g, completed, nowMs) {
     clearLongPress();
     if (g.done) return;
     if (!completed) {
       if (g.paint) dragCancel(g);
     } else if (g.paint) {
-      const t = g.moved ? clampedTile(p.x, p.y) : g.tile;
-      handlers.onDrag('end', g.tile.x, g.tile.y, t.x, t.y);
+      // g.last is the tile the last onDrag('move') previewed (moveGesture tracks tile changes even for
+      // sub-TAP_PX movement), so the applied shape always equals the ghost the player saw.
+      handlers.onDrag('end', g.tile.x, g.tile.y, g.last.x, g.last.y);
     } else if (!g.moved && g.button === 2) {
       handlers.onCommand({ type: 'cancel' });
     } else if (!g.moved && g.button === 0 && g.tile && nowMs - g.startMs < BALANCE.TAP_MS) {
