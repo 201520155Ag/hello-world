@@ -1,18 +1,160 @@
 <!DOCTYPE html>
-
-<html>
+<html lang="en" dir="ltr">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
-  <title>my-first-website</title>
-  <LINK href="styles.css" rel="stylesheet" type="text/css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Main City — build a city on your own, right in your browser. Free, no install, no server.">
+  <meta name="theme-color" content="#1f2a1f">
+  <title>Main City</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%231f2a1f'/%3E%3Cpath d='M6 26V12l5 3v-3l5 3v-3l5 3V8h5v18z' fill='%238fd97a'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./css/style.css">
 </head>
+<body data-skin="grassland">
+  <div id="app">
+    <header id="hud" class="hud">
+      <div class="hud-row hud-top">
+        <h1 class="brand" data-i18n="app.title">Main City</h1>
+        <span id="hud-date" class="hud-date" data-i18n-title="hud.date" title="Date">—</span>
+        <div class="speed" role="group" data-i18n-aria="a11y.speed" aria-label="Game speed">
+          <button type="button" id="speed-0" class="btn speed-btn" aria-pressed="false" data-i18n-aria="speed.0" aria-label="Pause" data-i18n-title="speed.0" title="Pause">II</button>
+          <button type="button" id="speed-1" class="btn speed-btn" aria-pressed="false" data-i18n-aria="speed.1" aria-label="Normal speed" data-i18n-title="speed.1" title="Normal speed">1×</button>
+          <button type="button" id="speed-2" class="btn speed-btn" aria-pressed="false" data-i18n-aria="speed.2" aria-label="Fast" data-i18n-title="speed.2" title="Fast">2×</button>
+          <button type="button" id="speed-3" class="btn speed-btn" aria-pressed="false" data-i18n-aria="speed.3" aria-label="Fastest" data-i18n-title="speed.3" title="Fastest">3×</button>
+        </div>
+      </div>
+      <div class="hud-row hud-stats">
+        <div class="stat" data-i18n-title="hud.cash" title="Cash"><span class="stat-label" data-i18n="hud.cash">Cash</span><strong id="hud-cash">$0</strong></div>
+        <div class="stat" data-i18n-title="hud.pop" title="Population"><span class="stat-label" data-i18n="hud.pop">Population</span><strong id="hud-pop">0</strong></div>
+        <div class="stat" data-i18n-title="hud.jobs" title="Jobs"><span class="stat-label" data-i18n="hud.jobs">Jobs</span><strong id="hud-jobs">0</strong></div>
+        <div class="stat" data-i18n-title="hud.approval" title="Approval">
+          <span class="stat-label" data-i18n="hud.approval">Approval</span>
+          <span class="approval">
+            <svg class="face" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <circle class="face-bg" cx="10" cy="10" r="9"/><circle class="eye" cx="7" cy="8" r="1.3"/><circle class="eye" cx="13" cy="8" r="1.3"/>
+              <path id="hud-face-mouth" class="mouth" d="M6.5 13.5h7" data-mood="neutral"/>
+            </svg>
+            <strong id="hud-approval">50</strong>
+          </span>
+        </div>
+        <div class="rci" role="group" data-i18n-aria="hud.demand" aria-label="Demand">
+          <span class="rci-tag" data-i18n="hud.r">R</span>
+          <div id="rci-r" class="rci-bar" role="progressbar" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><i class="rci-fill"></i></div>
+          <span class="rci-tag" data-i18n="hud.c">C</span>
+          <div id="rci-c" class="rci-bar" role="progressbar" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><i class="rci-fill"></i></div>
+          <span class="rci-tag" data-i18n="hud.i">I</span>
+          <div id="rci-i" class="rci-bar" role="progressbar" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="0"><i class="rci-fill"></i></div>
+        </div>
+      </div>
+      <div class="hud-row hud-ctrl">
+        <label class="sel"><span data-i18n="overlay.label">Overlay</span><select id="overlay-select"></select></label>
+        <label class="sel"><span data-i18n="skin.label">Map style</span><select id="skin-select"></select></label>
+        <label class="sel"><span data-i18n="lang.label">Language</span><select id="lang-select"></select></label>
+        <button type="button" id="btn-help" class="btn" aria-pressed="false" aria-controls="panels" data-i18n="panel.help">Help</button>
+        <button type="button" id="btn-save-panel" class="btn" aria-pressed="false" aria-controls="panels" data-i18n="panel.save">Save &amp; share</button>
+      </div>
+    </header>
 
-<body>
+    <main class="board">
+      <nav id="toolbar" class="toolbar" data-i18n-aria="a11y.toolbar" aria-label="Build tools"></nav>
+      <div class="stage">
+        <canvas id="game-canvas" role="application" tabindex="0" data-i18n-aria="a11y.canvas" aria-label="City map. Pick a tool, move the cursor with the arrow keys and press Enter to build."></canvas>
+        <div id="debt-banner" class="debt-banner" role="status" hidden></div>
+        <div id="price-badge" class="price-badge" aria-hidden="true" hidden></div>
+        <div class="zoom-controls">
+          <button type="button" id="btn-zoom-in" class="btn" data-i18n-aria="a11y.zoomIn" aria-label="Zoom in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button>
+          <button type="button" id="btn-zoom-out" class="btn" data-i18n-aria="a11y.zoomOut" aria-label="Zoom out"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg></button>
+          <button type="button" id="btn-center" class="btn" data-i18n-aria="a11y.center" aria-label="Fit map"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v2H5v5H3zm11 0h7v7h-2V5h-5zM3 14h2v5h5v2H3zm16 0h2v7h-7v-2h5z"/></svg></button>
+        </div>
+        <div id="toasts" class="toasts" role="status" aria-live="polite" data-i18n-aria="a11y.toasts" aria-label="Notifications"></div>
+      </div>
 
-<img src="https://octodex.github.com/images/daftpunktocat-thomas.gif" id="octocat" alt="octocat-gif" />
+      <aside id="panels" class="panels" data-i18n-aria="a11y.panels" aria-label="Panels" hidden>
+        <div class="tabs">
+          <div class="tablist" role="tablist">
+            <button type="button" role="tab" class="tab" data-panel="inspector" aria-selected="false" aria-controls="panel-inspector" data-i18n="panel.inspector">Inspector</button>
+            <button type="button" role="tab" class="tab" data-panel="budget" aria-selected="false" aria-controls="panel-budget" data-i18n="panel.budget">Budget</button>
+            <button type="button" role="tab" class="tab" data-panel="help" aria-selected="false" aria-controls="panel-help" data-i18n="panel.help">Help</button>
+            <button type="button" role="tab" class="tab" data-panel="save" aria-selected="false" aria-controls="panel-save" data-i18n="panel.save">Save &amp; share</button>
+          </div>
+          <button type="button" id="panel-close" class="btn tab-close" data-i18n-aria="panel.close" aria-label="Close" data-i18n-title="panel.close" title="Close">×</button>
+        </div>
 
-<!-- Change this code here by copy and pasting your template on line 15 -->
-<p>Welcome to your first GitHub Pages website!</p>
+        <section id="panel-inspector" class="panel" role="tabpanel" hidden>
+          <ul id="inspector-lines" class="lines"></ul>
+        </section>
 
+        <section id="panel-budget" class="panel" role="tabpanel" hidden>
+          <label class="tax"><span id="tax-value">Tax rate: 9%</span><input id="tax-slider" type="range" min="0" max="20" step="1" value="9"></label>
+          <h3 data-i18n="budget.lastMonth">Last month</h3>
+          <dl id="budget-rows" class="rows"></dl>
+          <ul id="budget-lines" class="lines"></ul>
+          <h3 id="budget-history-label">Cash, last 60 months</h3>
+          <canvas id="budget-spark" width="240" height="48" role="img" aria-labelledby="budget-history-label"></canvas>
+        </section>
+
+        <section id="panel-help" class="panel" role="tabpanel" hidden>
+          <h3 data-i18n="help.controls">Controls</h3>
+          <p data-i18n="help.mouse">Mouse: left click or drag uses the tool, right or middle drag pans, wheel zooms.</p>
+          <p data-i18n="help.touch">Touch: tap to place, drag with the Pan tool to move, pinch to zoom, two fingers always pan, long-press to inspect.</p>
+          <p class="keys" data-i18n="help.keys">R road · Z cycle zones · B bulldoze · I inspect · Space pause · 1/2/3 speed · Esc cancel · O overlay · H help · WASD pan · arrows move cursor · Enter build · +/− zoom · Ctrl+S save</p>
+          <h3 data-i18n="help.howTo">How to grow</h3>
+          <p data-i18n="help.howToText">1. Draw roads. 2. Zone lots touching roads. 3. Power them with a plant in range. 4. Add a water tower for taller buildings. 5. Balance homes and jobs — watch the RCI bars. 6. Parks and schools raise land value.</p>
+          <h3 data-i18n="help.legend">Legend</h3>
+          <ul class="legend">
+            <li><i class="sw" style="--sw: var(--rci-r)"></i><span data-i18n="help.legend.r">Residential — green</span></li>
+            <li><i class="sw" style="--sw: var(--rci-c)"></i><span data-i18n="help.legend.c">Commercial — blue</span></li>
+            <li><i class="sw" style="--sw: var(--rci-i)"></i><span data-i18n="help.legend.i">Industrial — orange</span></li>
+          </ul>
+          <p data-i18n="help.legend.badges">Badges: lightning = no power, drop = no water, road sign = no road access</p>
+          <h3 data-i18n="help.blockers">Blocker overlay colours</h3>
+          <ul id="blocker-legend" class="legend"></ul>
+        </section>
+
+        <section id="panel-save" class="panel" role="tabpanel" hidden>
+          <div class="btn-row">
+            <button type="button" id="btn-save" class="btn btn-primary" data-i18n="save.save">Save</button>
+            <button type="button" id="btn-load" class="btn" data-i18n="save.load">Load</button>
+            <button type="button" id="btn-new-game" class="btn" data-i18n="landing.new">New city</button>
+          </div>
+          <h3 data-i18n="share.title">Share</h3>
+          <label class="field"><span data-i18n="share.code">City code</span><textarea id="share-code" rows="3" readonly spellcheck="false"></textarea></label>
+          <div class="btn-row">
+            <button type="button" id="btn-copy-code" class="btn" data-i18n="share.copyCode">Copy code</button>
+            <button type="button" id="btn-copy-link" class="btn" data-i18n="share.copyLink">Copy link</button>
+          </div>
+          <label class="field"><span data-i18n="share.import">Import</span><textarea id="share-import" rows="3" spellcheck="false" data-i18n-placeholder="share.paste" placeholder="Paste a city code or link here"></textarea></label>
+          <button type="button" id="btn-import" class="btn" data-i18n="share.import">Import</button>
+          <p class="note" data-i18n="share.note">Sharing is by city code or link only — there is no live multiplayer.</p>
+        </section>
+      </aside>
+    </main>
+  </div>
+
+  <div id="landing" class="landing" role="dialog" aria-modal="true" aria-labelledby="landing-title">
+    <div class="landing-card">
+      <h1 id="landing-title" class="landing-title" data-i18n="app.title">Main City</h1>
+      <p class="tagline" data-i18n="app.tagline">Build a city on your own, right in your browser.</p>
+      <label class="field"><span data-i18n="landing.name">City name</span><input id="landing-name" type="text" maxlength="40" value="Main City" autocomplete="off"></label>
+      <div class="landing-actions">
+        <button type="button" id="btn-new" class="btn btn-primary btn-big" data-i18n="landing.new">New city</button>
+        <button type="button" id="btn-continue" class="btn btn-big" disabled><span data-i18n="landing.continue">Continue</span><small id="btn-continue-meta"></small></button>
+        <button type="button" id="btn-shared" class="btn btn-big" data-i18n="landing.openShared" hidden>Open shared city</button>
+      </div>
+      <label class="sel landing-lang"><span data-i18n="lang.label">Language</span><select id="landing-lang"></select></label>
+    </div>
+    <div id="landing-toasts" class="toasts" role="status" aria-live="polite" data-i18n-aria="a11y.toasts" aria-label="Notifications"></div>
+  </div>
+
+  <dialog id="confirm" class="confirm" aria-labelledby="confirm-text">
+    <form method="dialog">
+      <p id="confirm-text"></p>
+      <div class="confirm-actions">
+        <button type="submit" value="no" class="btn" data-i18n="ui.no">No</button>
+        <button type="submit" value="yes" class="btn btn-primary" data-i18n="ui.yes">Yes</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script type="module" src="./js/main.js"></script>
 </body>
 </html>
