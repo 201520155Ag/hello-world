@@ -1,90 +1,131 @@
-# Welcome to GitHub
+# Main City
 
-Welcome to GitHub—where millions of developers work together on software. Ready to get started? Let’s learn how this all works by building and publishing your first GitHub Pages website!
+*Build a city on your own, right in your browser.*
 
-## Repositories
+Main City is a free, no-install city-builder that runs entirely in the browser. Draw roads,
+zone land, keep the lights and water on, balance the budget and watch your town grow — on a
+laptop or a phone. There is no server and nothing to download: the whole game is a static
+web page.
 
-Right now, we’re in your first GitHub **repository**. A repository is like a folder or storage space for your project. Your project's repository contains all its files such as code, documentation, images, and more. It also tracks every change that you—or your collaborators—make to each file, so you can always go back to previous versions of your project if you make any mistakes.
+**Play:** `https://<user>.github.io/<repo>/` (replace with your GitHub Pages address).
 
-This repository contains three important files: The HTML code for your first website on GitHub, the CSS stylesheet that decorates your website with colors and fonts, and the **README** file. It also contains an image folder, with one image file.
+## Features
 
-## Describe your project
+- 40 × 40 tile map with seeded terrain (grass, trees, water), rendered on a single canvas.
+- Roads, residential / commercial / industrial zoning with an RCI demand model; lots grow
+  into level 1–3 buildings when they have a road, power, water (above level 1), demand and
+  enough land value.
+- Service buildings with radius effects: power plant, water tower, park, police, fire station,
+  school, hospital. Pollution, land value, coverage and approval are recomputed every day.
+- Budget with tax rate, upkeep and interest; you can go into debt (interest, unhappy citizens,
+  services suspended below −$5,000, building refused below −$10,000). No game over.
+- Game clock with pause / 1× / 2× / 3×, day and month ticks, fires at month end.
+- Overlays: power, water, land value, pollution, growth blockers. Every lot that is not
+  growing tells you why in the Inspector.
+- Four map styles: grassland, desert, snow, night — switchable at any time.
+- Autosave, a manual save slot, and share codes / links.
+- Four languages (English, Español, Русский, עברית with right-to-left layout).
+- Keyboard, mouse and touch; works at 360 px wide; respects `prefers-reduced-motion`.
 
-You are currently viewing your project's **README** file. **_README_** files are like cover pages or elevator pitches for your project. They are written in plain text or [Markdown language](https://guides.github.com/features/mastering-markdown/), and usually include a paragraph describing the project, directions on how to use it, who authored it, and more.
+## How to play
 
-[Learn more about READMEs](https://help.github.com/en/articles/about-readmes)
+1. Pick **Road** and drag to lay a road.
+2. Zone **R**, **C** or **I** lots touching the road (drag a rectangle).
+3. Place a **Power plant** within range (radius 10). Houses appear on powered lots.
+4. Add a **Water tower** so buildings can grow past level 1.
+5. Keep homes and jobs balanced — watch the R / C / I demand bars in the header.
+6. Parks, schools and hospitals raise land value, which higher levels require.
+7. Open **Budget** to set the tax rate and see income, upkeep and a cash history.
 
-## Your first website
+### Tools
 
-**GitHub Pages** is a free and easy way to create a website using the code that lives in your GitHub repositories. You can use GitHub Pages to build a portfolio of your work, create a personal website, or share a fun project that you coded with the world. GitHub Pages is automatically enabled in this repository, but when you create new repositories in the future, the steps to launch a GitHub Pages website will be slightly different.
+| Tool | Cost | Notes |
+|---|---|---|
+| Pan / Inspect | — | Tap a tile to inspect it |
+| Road | $10 | Upkeep $1/month; trees cost $3 extra to clear |
+| Residential / Commercial / Industrial zone | $5 per tile | Level-0 lot |
+| Bulldoze | $2 per tile | Clears roads, lots, trees and whole buildings |
+| Power plant (2×2) | $2,500 | 400 power, radius 10, pollutes |
+| Water tower | $600 | 150 water, radius 7 |
+| Park | $150 | Radius 4, land value +20, pollution −20 on covered tiles |
+| Police / Fire station (2×2) | $800 | Radius 8; fire cover cuts fire risk ×0.15 |
+| School (2×2) | $1,000 | Radius 9, land value +10, boosts commercial demand |
+| Hospital (2×2) | $1,500 | Radius 9, land value +8 |
 
-[Learn more about GitHub Pages](https://pages.github.com/)
+### Controls
 
-## Rename this repository to publish your site
+| Input | Action |
+|---|---|
+| Mouse | Left click / drag uses the tool; right or middle drag pans; wheel zooms |
+| Touch | Tap to place; drag with the Pan tool to move; pinch to zoom; two fingers always pan; long-press to inspect |
+| `R` / `Z` / `B` / `I` | Road · cycle zones · Bulldoze · Inspect |
+| `Space`, `1` `2` `3` | Pause · speed 1× / 2× / 3× |
+| `Esc` | Cancel: back to Pan, close panels |
+| `O`, `H` | Cycle overlay · Help |
+| `W A S D`, arrows, `Enter` | Pan · move the keyboard cursor · build at the cursor |
+| `+` / `−` | Zoom |
+| `Ctrl`/`Cmd` + `S` | Save |
 
-We've already set-up a GitHub Pages website for you, based on your personal username. This repository is called `hello-world`, but you'll rename it to: `username.github.io`, to match your website's URL address. If the first part of the repository doesn’t exactly match your username, it won’t work, so make sure to get it right.
+## Map styles
 
-Let's get started! To update this repository’s name, click the `Settings` tab on this page. This will take you to your repository’s settings page. 
+Grassland (default), Desert, Snow and Night. The style is a palette only — change it from the
+header at any time; it is remembered with your settings and stored in the save.
 
-![repo-settings-image](https://user-images.githubusercontent.com/18093541/63130482-99e6ad80-bf88-11e9-99a1-d3cf1660b47e.png)
+## Saving and sharing
 
-Under the **Repository Name** heading, type: `username.github.io`, where username is your username on GitHub. Then click **Rename**—and that’s it. When you’re done, click your repository name or browser’s back button to return to this page.
+- The game **autosaves** to your browser's local storage at every month end and when you leave
+  the page. The landing screen's **Continue** button reopens the newest save.
+- **Save & share** has one manual save slot (Save / Load) and a **city code**: a compact
+  text string (`MC1.…`) that encodes the whole city. **Copy code** or **Copy link** and send it
+  to a friend; they paste it into **Import**, or open the link (`…/#c=CODE`) and press
+  **Open shared city**.
+- A city opened from a link or code is not autosaved over your own city until you change
+  something, so trying a friend's city never destroys yours.
 
-<img width="1039" alt="rename_screenshot" src="https://user-images.githubusercontent.com/18093541/63129466-956cc580-bf85-11e9-92d8-b028dd483fa5.png">
+**Sharing is by city code or link only — there is no live multiplayer and no server.**
+Nothing ever leaves your browser.
 
-Once you click **Rename**, your website will automatically be published at: https://your-username.github.io/. The HTML file—called `index.html`—is rendered as the home page and you'll be making changes to this file in the next step.
+## Languages
 
-Congratulations! You just launched your first GitHub Pages website. It's now live to share with the entire world
+English is the default. Add `?lang=es`, `?lang=ru` or `?lang=he` to the URL, or use the
+language switcher in the header. Hebrew switches the whole layout to right-to-left. Your
+choice is remembered.
 
-## Making your first edit
+## Running locally
 
-When you make any change to any file in your project, you’re making a **commit**. If you fix a typo, update a filename, or edit your code, you can add it to GitHub as a commit. Your commits represent your project’s entire history—and they’re all saved in your project’s repository.
+The game uses native ES modules, which browsers refuse to load from `file://`. Serve the
+folder with any static server, for example:
 
-With each commit, you have the opportunity to write a **commit message**, a short, meaningful comment describing the change you’re making to a file. So you always know exactly what changed, no matter when you return to a commit.
-
-## Practice: Customize your first GitHub website by writing HTML code
-
-Want to edit the site you just published? Let’s practice commits by introducing yourself in your `index.html` file. Don’t worry about getting it right the first time—you can always build on your introduction later.
-
-Let’s start with this template:
-
+```sh
+python3 -m http.server 8123 --bind 127.0.0.1
+# then open http://127.0.0.1:8123/
 ```
-<p>Hello World! I’m [username]. This is my website!</p>
-```
 
-To add your introduction, copy our template and click the edit pencil icon at the top right hand corner of the `index.html` file.
+Add `?debug=1` to expose `window.MC = { city(), sim, view }` for tinkering.
 
-<img width="997" alt="edit-this-file" src="https://user-images.githubusercontent.com/18093541/63131820-0794d880-bf8d-11e9-8b3d-c096355e9389.png">
+## Deployment
 
+Main City is a static site: no build step, no dependencies, no CDN. Publish the repository
+root with GitHub Pages (Settings → Pages → deploy from branch). The empty `.nojekyll` file
+keeps Pages from processing the files, and all paths are relative so project sub-paths work.
 
-Delete this placeholder line:
+## Architecture
 
-```
-<p>Welcome to your first GitHub Pages website!</p>
-```
+| File | Role |
+|---|---|
+| `index.html`, `css/style.css` | Static DOM shell, responsive layout, theme variables |
+| `js/data.js` | Enums, tuning tables (`BALANCE`, `BUILDINGS`, `ZONE_LEVELS`), skins, factories |
+| `js/sim.js` | Deterministic simulation: RNG, terrain, actions, derived grids, demand, growth, budget, clock |
+| `js/camera.js` | Pan/zoom state and screen ↔ world ↔ tile conversions |
+| `js/render.js` | Canvas renderer: baked map, dirty-tile repaint, overlays, ghosts, badges |
+| `js/input.js` | Pointer, wheel and keyboard events → tool callbacks and camera moves |
+| `js/ui.js` | HUD, toolbar, panels, toasts, dialogs |
+| `js/i18n.js` | Translation table (en/es/ru/he) and formatting helpers |
+| `js/save.js` | Save format, local storage, share codes and URL hash helpers |
+| `js/main.js` | Entry point: game loop, state ownership, wiring between modules |
 
-Then, paste the template to line 15 and fill in the blanks.
+`docs/DESIGN.md` is the full design and architecture specification.
 
-<img width="1032" alt="edit-githuboctocat-index" src="https://user-images.githubusercontent.com/18093541/63132339-c3a2d300-bf8e-11e9-8222-59c2702f6c42.png">
+## License
 
-
-When you’re done, scroll down to the `Commit changes` section near the bottom of the edit page. Add a short message explaining your change, like "Add my introduction", then click `Commit changes`.
-
-
-<img width="1030" alt="add-my-username" src="https://user-images.githubusercontent.com/18093541/63131801-efbd5480-bf8c-11e9-9806-89273f027d16.png">
-
-Once you click `Commit changes`, your changes will automatically be published on your GitHub Pages website. Refresh the page to see your new changes live in action.
-
-:tada: You just made your first commit! :tada:
-
-## Extra Credit: Keep on building!
-
-Change the placeholder Octocat gif on your GitHub Pages website by [creating your own personal Octocat emoji](https://myoctocat.com/build-your-octocat/) or [choose a different Octocat gif from our logo library here](https://octodex.github.com/). Add that image to line 12 of your `index.html` file, in place of the `<img src=` link.
-
-Want to add even more code and fun styles to your GitHub Pages website? [Follow these instructions](https://github.com/github/personal-website) to build a fully-fledged static website.
-
-![octocat](./images/create-octocat.png)
-
-## Everything you need to know about GitHub
-
-Getting started is the hardest part. If there’s anything you’d like to know as you get started with GitHub, try searching [GitHub Help](https://help.github.com). Our documentation has tutorials on everything from changing your repository settings to configuring GitHub from your command line.
+MIT
